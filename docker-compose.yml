@@ -1,0 +1,67 @@
+version: '3.7'
+
+services:
+
+  mkcert:
+    image: vishnunair/docker-mkcert
+    container_name: mkcert
+    volumes:
+      - ./nginx/ssl:/root/.local/share/mkcert
+    command: >
+      bash -c "pushd /root/.local/share/mkcert &&
+      mkcert -install &&
+      mkcert chain &&
+      mv /root/.local/share/mkcert/chain-key.pem /root/.local/share/mkcert/privkey.pem &&
+      cat /root/.local/share/mkcert/chain.pem > /root/.local/share/mkcert/fullchain.pem &&
+      cat /root/.local/share/mkcert/rootCA.pem >> /root/.local/share/mkcert/fullchain.pem &&
+      popd &&
+      sleep 600"
+    healthcheck:
+      test: bash -c "[ -f /root/.local/share/mkcert/fullchain.pem ]"
+      timeout: 5s
+      retries: 20
+
+  nginx:
+    image: yeasy/nginx:latest
+    container_name: nginx
+    environment:
+      BASIC_AUTH_USER: YOUR_USERNAME_HERE
+      BASIC_AUTH_PASSWORD: YOUR_PASSWD_HERE
+    ports:
+      - "443:443"
+    restart: unless-stopped
+    volumes:
+      - ./nginx/log:/var/log/nginx
+      - ./nginx/ssl:/ssl
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      mkcert:
+        condition: service_healthy
+    restart: unless-stopped
+    command: >
+      bash -c "htpasswd -b -c /etc/nginx/.htpasswd $$BASIC_AUTH_USER $$BASIC_AUTH_PASSWORD &&
+      nginx -g 'daemon off;'"
+
+  fail2ban:
+    image: crazymax/fail2ban:latest
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    container_name: fail2ban
+    healthcheck:
+      disable: true
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./nginx/log:/var/log/nginx
+      - ./fail2ban:/data
+
+  ttyjs:
+    image: yadutaf/tty.js:latest
+    container_name: ttyjs
+    tty: true
+    volumes:
+      - ./ttyjs/config.json:/config.json
+      - ./ttyjs/dotbashrc:/home/ttyjs/.bashrc
+    restart: unless-stopped
+    command: ["node_modules/.bin/tty.js", "--config", "/config.json"]

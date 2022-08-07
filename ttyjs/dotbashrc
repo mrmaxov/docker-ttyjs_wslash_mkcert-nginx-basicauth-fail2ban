@@ -1,0 +1,1 @@
+ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no root@$(ip ro | head -n 1 | awk '{print $3}')
